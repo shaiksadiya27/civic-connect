@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CivicConnect – Smart Civic Issue Reporting & Prioritization System</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- OpenStreetMap & Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            civic: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#0284c7',
+              600: '#0369a1',
+              700: '#075985',
+              800: '#0c4a6e',
+              900: '#082f49',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    }
+    .leaflet-popup-content-wrapper {
+      border-radius: 1rem;
+      overflow: hidden;
+      padding: 0;
+      box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.15);
+    }
+    .leaflet-popup-content {
+      margin: 0;
+      line-height: 1.4;
+    }
+    @keyframes ping-slow {
+      0% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1); opacity: 0; }
+    }
+    .pin-pulse {
+      animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased selection:bg-sky-500 selection:text-white flex flex-col min-h-screen">
+
+  <!-- TOP NAVIGATION HEADER -->
+  <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        
+        <!-- Brand Logo -->
+        <div class="flex items-center gap-3 cursor-pointer" onclick="switchTab('feed')">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-600 via-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20 font-extrabold text-lg">
+            CC
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold text-lg tracking-tight text-slate-900">Civic<span class="text-sky-600">Connect</span></span>
+              <span class="hidden sm:inline-flex text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                Smart Triage
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 hidden md:block">Smart Civic Issue Reporting & Prioritization</p>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav class="hidden md:flex items-center gap-1">
+          <button id="nav-feed" onclick="switchTab('feed')" class="px-3.5 py-2 rounded-lg text-sm font-bold bg-sky-50 text-sky-700 shadow-sm transition">
+            Community Feed
+          </button>
+          <button id="nav-map" onclick="switchTab('map')" class="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition">
+            Issue Map
+          </button>
+          <button id="nav-authority" onclick="switchTab('authority')" class="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition flex items-center gap-1.5">
+            <span>Authority Triage</span>
+            <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded-full">Console</span>
+          </button>
+          <button id="nav-analytics" onclick="switchTab('analytics')" class="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition">
+            City Analytics
+          </button>
+        </nav>
+
+        <!-- Right Side Actions -->
+        <div class="flex items-center gap-3">
+          <button onclick="openReportModal()" class="flex items-center gap-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md shadow-sky-500/25 transition transform hover:-translate-y-0.5 active:translate-y-0">
+            <span class="text-base font-bold leading-none">+</span>
+            <span class="hidden sm:inline">Report Issue</span>
+            <span class="sm:hidden">Report</span>
+          </button>
+
+          <!-- Persona / Role Selector -->
+          <div class="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+            <span class="text-slate-400 pl-1 font-semibold hidden lg:inline">Role:</span>
+            <select id="role-selector" onchange="changeRole(this.value)" class="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer">
+              <option value="citizen">Citizen (Arjun)</option>
+              <option value="official">City Official (Sarah)</option>
+              <option value="worker">Field Worker (Marcus)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- SUB-HEADER TELEMETRY BAR -->
+  <div class="bg-slate-100/90 border-b border-slate-200/80 px-4 py-1.5 text-[11px] text-slate-600">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-2 font-medium">
+        <span class="relative flex h-2 w-2">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+        <span class="text-emerald-700 font-bold">Smart Prioritization Engine Active</span>
+        <span class="hidden sm:inline text-slate-400">• OpenStreetMap & Geolocation Enabled</span>
+      </div>
+      <div class="hidden sm:flex items-center gap-3">
+        <span>Logged in as: <strong id="active-user-display" class="text-slate-800 font-bold">Arjun Sharma (Citizen)</strong></span>
+        <span>•</span>
+        <span id="header-total-count">8 Issues Tracked</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN VIEWPORT -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ==================== TAB 1: COMMUNITY FEED ==================== -->
+    <section id="tab-feed" class="space-y-6">
+      
+      <!-- Hero Banner -->
+      <div class="relative rounded-3xl overflow-hidden bg-gradient-to-r from-sky-900 via-sky-800 to-indigo-900 text-white p-6 sm:p-8 shadow-xl">
+        <div class="relative z-10 max-w-3xl space-y-3">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs font-semibold text-sky-200">
+            <span>✨ AI Urgency Scoring & Automated Department Routing</span>
+          </div>
+
+          <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+            Report Civic Issues. <span class="text-sky-300">Prioritize Public Safety.</span>
+          </h1>
+
+          <p class="text-sky-100/90 text-sm leading-relaxed max-w-2xl">
+            Spot a dangerous pothole, overflowing sewage, burst water pipe, or broken streetlight? Report in 60 seconds with GPS capture and automatic hazard escalation.
+          </p>
+
+          <div class="flex flex-wrap items-center gap-3 pt-2">
+            <button onclick="openReportModal()" class="flex items-center gap-2 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-400 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg transition transform hover:-translate-y-0.5">
+              <span>+ Report an Issue Now</span>
+            </button>
+            <button onclick="switchTab('map')" class="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition">
+              📍 View Live City Map
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3 text-xs">
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          
+          <!-- Search input -->
+          <div class="flex-1 relative">
+            <input
+              id="feed-search"
+              type="text"
+              oninput="renderFeed()"
+              placeholder="Search by issue title, street, neighborhood, or landmark..."
+              class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-sky-500 focus:bg-white transition"
+            />
+          </div>
+
+          <!-- Status filter pill tabs -->
+          <div class="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-50 font-semibold self-start sm:self-auto">
+            <button onclick="setFeedStatusFilter('all')" id="status-filter-all" class="px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs transition">
+              All
+            </button>
+            <button onclick="setFeedStatusFilter('active')" id="status-filter-active" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition">
+              Active Triage
+            </button>
+            <button onclick="setFeedStatusFilter('resolved')" id="status-filter-resolved" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition">
+              Resolved Proof
+            </button>
+          </div>
+
+          <!-- Sort dropdown -->
+          <select id="feed-sort" onchange="renderFeed()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
+            <option value="priority_desc">🔥 Highest Urgency Score</option>
+            <option value="upvotes_desc">👍 Most Endorsed</option>
+            <option value="newest">🕒 Newest Reports</option>
+          </select>
+        </div>
+
+        <!-- Category Filter Horizontal Chips -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 pt-1">
+          <button onclick="setFeedCategoryFilter('all')" class="cat-pill px-3 py-1.5 rounded-full font-bold whitespace-nowrap bg-slate-900 text-white" data-cat="all">
+            All Categories
+          </button>
+          <button onclick="setFeedCategoryFilter('damaged_roads')" class="cat-pill px-3 py-1.5 rounded-full font-semibold whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-100" data-cat="damaged_roads">
+            Roads & Potholes
+          </button>
+          <button onclick="setFeedCategoryFilter('water_leakage')" class="cat-pill px-3 py-1.5 rounded-full font-semibold whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-100" data-cat="water_leakage">
+            Water Leakage
+          </button>
+          <button onclick="setFeedCategoryFilter('drainage')" class="cat-pill px-3 py-1.5 rounded-full font-semibold whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-100" data-cat="drainage">
+            Drainage & Sewage
+          </button>
+          <button onclick="setFeedCategoryFilter('broken_streetlights')" class="cat-pill px-3 py-1.5 rounded-full font-semibold whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-100" data-cat="broken_streetlights">
+            Street Lighting
+          </button>
+          <button onclick="setFeedCategoryFilter('garbage')" class="cat-pill px-3 py-1.5 rounded-full font-semibold whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-100" data-cat="garbage">
+            Garbage & Waste
+          </button>
+          <button onclick="setFeedCategoryFilter('fallen_trees')" class="cat-pill px-3 py-1.5 rounded-full font-semibold whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-100" data-cat="fallen_trees">
+            Fallen Trees
+          </button>
+        </div>
+      </div>
+
+      <!-- Feed Grid -->
+      <div id="feed-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+    </section>
+
+
+    <!-- ==================== TAB 2: INTERACTIVE MAP ==================== -->
+    <section id="tab-map" class="hidden space-y-4">
+      <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-bold text-slate-800">Map Legend:</span>
+          <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold border border-rose-200">🔴 Critical (&lt;12h SLA)</span>
+          <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200">🟠 High (&lt;36h SLA)</span>
+          <span class="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 font-bold border border-sky-200">🟡 Medium (&lt;72h SLA)</span>
+          <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-200">🟢 Resolved</span>
+        </div>
+        <div class="flex items-center gap-2 ml-auto">
+          <button onclick="locateUserOnMap()" class="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg font-bold transition flex items-center gap-1.5">
+            <span>📍 My Current Location</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="relative h-[600px] w-full rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div id="leaflet-map" class="w-full h-full"></div>
+        <div class="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-md p-3 rounded-xl border border-slate-200 shadow-lg text-[11px]">
+          <p class="font-bold text-slate-800">💡 Interactive Map Feature</p>
+          <p class="text-slate-500">Click any marker to inspect details, or click on the map to pin a new issue.</p>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==================== TAB 3: AUTHORITY DASHBOARD ==================== -->
+    <section id="tab-authority" class="hidden space-y-6">
+      
+      <!-- Top Banner -->
+      <div class="bg-slate-900 rounded-3xl p-6 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xl">
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Authority Dispatch & Triage Console</h1>
+            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              Live Triage
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1">Review urgent civic issues sorted by priority score, assign municipal field departments, and inspect resolution proof</p>
+        </div>
+        <button onclick="exportCSV()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-bold transition">
+          📥 Export CSV Log
+        </button>
+      </div>
+
+      <!-- KPI Metrics -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-4.5 rounded-2xl border border-rose-200 shadow-sm relative overflow-hidden">
+          <span class="text-xs font-bold uppercase text-rose-700">Critical Priority</span>
+          <div id="stat-critical" class="text-3xl font-extrabold text-slate-900 mt-1">0</div>
+          <span class="text-xs text-rose-600 font-semibold">Immediate 12h SLA</span>
+          <div class="absolute bottom-0 left-0 right-0 h-1 bg-rose-500"></div>
+        </div>
+
+        <div class="bg-white p-4.5 rounded-2xl border border-amber-200 shadow-sm relative overflow-hidden">
+          <span class="text-xs font-bold uppercase text-amber-700">In Active Fieldwork</span>
+          <div id="stat-progress" class="text-3xl font-extrabold text-slate-900 mt-1">0</div>
+          <span class="text-xs text-amber-600 font-semibold">Crews Dispatched</span>
+          <div class="absolute bottom-0 left-0 right-0 h-1 bg-amber-500"></div>
+        </div>
+
+        <div class="bg-white p-4.5 rounded-2xl border border-emerald-200 shadow-sm relative overflow-hidden">
+          <span class="text-xs font-bold uppercase text-emerald-700">Resolution Turnaround</span>
+          <div id="stat-resolution-rate" class="text-3xl font-extrabold text-slate-900 mt-1">0%</div>
+          <span class="text-xs text-emerald-600 font-semibold">Field Verified</span>
+          <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>
+        </div>
+
+        <div class="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+          <span class="text-xs font-bold uppercase text-slate-600">Total Workload</span>
+          <div id="stat-total" class="text-3xl font-extrabold text-slate-900 mt-1">0</div>
+          <span class="text-xs text-slate-500 font-semibold">Across 5 departments</span>
+          <div class="absolute bottom-0 left-0 right-0 h-1 bg-sky-500"></div>
+        </div>
+      </div>
+
+      <!-- Triage Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+              <tr>
+                <th class="py-3.5 px-4">Priority / Score</th>
+                <th class="py-3.5 px-4">Issue Headline & Address</th>
+                <th class="py-3.5 px-4">Category</th>
+                <th class="py-3.5 px-4">Assigned Department</th>
+                <th class="py-3.5 px-4">Status Transition</th>
+                <th class="py-3.5 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="authority-table-body" class="divide-y divide-slate-100 font-medium"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+
+    <!-- ==================== TAB 4: CITY ANALYTICS ==================== -->
+    <section id="tab-analytics" class="hidden space-y-6">
+      <div class="bg-gradient-to-r from-sky-800 to-indigo-900 rounded-3xl p-6 sm:p-7 text-white shadow-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 class="text-xl sm:text-2xl font-extrabold">Civic Infrastructure & Telemetry</h1>
+          <p class="text-xs text-sky-100/80 mt-1">Real-time performance indicators, category hazard densities, and department resolution rates.</p>
+        </div>
+        <div class="px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-center">
+          <span class="text-[10px] uppercase font-bold text-sky-200 block">Average SLA Turnaround</span>
+          <span class="text-xl font-extrabold text-white">32.5 Hours</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+          <h3 class="font-bold text-sm text-slate-900">Issues by Civic Category</h3>
+          <div id="analytics-category-bars" class="space-y-3.5 pt-2"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+          <h3 class="font-bold text-sm text-slate-900">Department Workloads & Performance</h3>
+          <div id="analytics-dept-bars" class="space-y-3 pt-2"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+
+  <!-- ==================== REPORT ISSUE MODAL ==================== -->
+  <div id="report-modal" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-5">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]">
+      
+      <div class="px-6 py-4 bg-gradient-to-r from-sky-700 to-indigo-700 text-white flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-extrabold">Report a Civic Issue</h2>
+          <p class="text-xs text-sky-100">Citizens report, authorities prioritize & dispatch field crews</p>
+        </div>
+        <button onclick="closeReportModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">✕</button>
+      </div>
+
+      <form onsubmit="handleFormSubmit(event)" class="overflow-y-auto p-6 space-y-4 text-xs">
+        
+        <!-- Category -->
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Issue Category *</label>
+          <select id="modal-category" onchange="updateUrgencyPreview()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800">
+            <option value="damaged_roads">Roads & Potholes (Hazard: 80)</option>
+            <option value="water_leakage">Water Leakage / Pipe Rupture (Hazard: 82)</option>
+            <option value="drainage">Drainage & Sewage Overflow (Hazard: 90)</option>
+            <option value="broken_streetlights">Street Lighting / Dark Zones (Hazard: 72)</option>
+            <option value="garbage">Garbage & Illegal Dumping (Hazard: 62)</option>
+            <option value="fallen_trees">Fallen Trees & Storm Hazards (Hazard: 88)</option>
+            <option value="public_property">Public Property & Park Damage (Hazard: 50)</option>
+          </select>
+        </div>
+
+        <!-- Title -->
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Headline / Title *</label>
+          <input id="modal-title" required placeholder="e.g. Deep pothole damaging vehicle rims" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold" />
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Detailed Description *</label>
+          <textarea id="modal-desc" required rows="3" placeholder="Describe the hazard size, damage caused, water accumulation, dangers..." class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs"></textarea>
+        </div>
+
+        <!-- Severity Slider & Live Preview -->
+        <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+          <div class="flex justify-between font-bold text-slate-800">
+            <span>Citizen Severity Assessment: <span id="severity-num" class="text-sky-600">3</span>/5</span>
+            <span id="severity-label" class="text-slate-500 font-normal">3 - Substantial Hazard</span>
+          </div>
+          <input id="modal-severity" type="range" min="1" max="5" value="3" oninput="handleSeveritySlide(this.value)" class="w-full accent-sky-600 cursor-pointer" />
+          
+          <div class="flex items-center gap-2 pt-1">
+            <input type="checkbox" id="modal-critical-zone" onchange="updateUrgencyPreview()" class="w-4 h-4 rounded text-sky-600" />
+            <label for="modal-critical-zone" class="text-slate-700 font-medium">Located near school, hospital, transit station (+Urgency bonus)</label>
+          </div>
+
+          <div class="pt-2 border-t border-slate-200 flex justify-between font-bold text-sky-700">
+            <span>Calculated Urgency: <span id="preview-score-badge" class="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">Medium (58/100)</span></span>
+            <span id="preview-sla">36h SLA</span>
+          </div>
+        </div>
+
+        <!-- Location & Geolocation -->
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="font-bold text-slate-700">Location & Coordinates *</label>
+            <button type="button" onclick="useBrowserLocation()" class="px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 rounded-lg font-bold text-[11px] transition">
+              📍 Use My Current Location (GPS)
+            </button>
+          </div>
+          <input id="modal-address" required placeholder="Street address or intersection" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs mb-2" />
+          <div class="grid grid-cols-2 gap-2">
+            <input id="modal-lat" type="number" step="0.0001" value="37.7749" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+            <input id="modal-lng" type="number" step="0.0001" value="-122.4194" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+          </div>
+        </div>
+
+        <!-- Evidence Photo -->
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Evidence Photo URL (Preset provided)</label>
+          <input id="modal-image" value="https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80" class="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs" />
+        </div>
+
+        <!-- Buttons -->
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-3">
+          <button type="button" onclick="closeReportModal()" class="px-4 py-2 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition">Cancel</button>
+          <button type="submit" class="px-5 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 text-white font-bold rounded-xl shadow-md transition">Submit Civic Report</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- ==================== ISSUE DETAIL MODAL ==================== -->
+  <div id="detail-modal" class="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-5">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
+      <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <div id="detail-modal-badges" class="flex items-center gap-2"></div>
+        <button onclick="closeDetailModal()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white">✕</button>
+      </div>
+      <div id="detail-modal-body" class="overflow-y-auto p-6 space-y-4 text-xs"></div>
+    </div>
+  </div>
+
+
+  <!-- FOOTER -->
+  <footer class="bg-white border-t border-slate-200 py-6 text-xs text-slate-500 mt-12">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-2 font-bold text-slate-800">
+        <span class="w-5 h-5 rounded-md bg-sky-600 text-white flex items-center justify-center text-[10px]">C</span>
+        <span>CivicConnect</span>
+        <span class="font-normal text-slate-400">– Smart Civic Issue Reporting & Prioritization System</span>
+      </div>
+      <p class="text-slate-400">OpenStreetMap • Leaflet • Tailwind CSS • Standalone Single-File Application</p>
+    </div>
+  </footer>
+
+
+  <!-- JAVASCRIPT APPLICATION CORE -->
+  <script>
+    const CATEGORIES = {
+      damaged_roads: { label: 'Roads & Potholes', hazard: 80, dept: 'Public Works & Roads' },
+      water_leakage: { label: 'Water Leakage', hazard: 82, dept: 'Water Supply & Sewerage' },
+      drainage: { label: 'Drainage & Sewage', hazard: 90, dept: 'Water Supply & Sewerage' },
+      broken_streetlights: { label: 'Street Lighting', hazard: 72, dept: 'Electricity & Public Lighting' },
+      garbage: { label: 'Garbage & Waste', hazard: 62, dept: 'Sanitation & Waste Management' },
+      fallen_trees: { label: 'Fallen Trees', hazard: 88, dept: 'Urban Forestry & Parks' },
+      public_property: { label: 'Public Property', hazard: 50, dept: 'Urban Forestry & Parks' }
+    };
+
+    const INITIAL_ISSUES = [
+      {
+        id: 1,
+        title: "Severe Deep Pothole on High-Speed Commuter Lane",
+        description: "Large 8-inch deep crater pothole right after highway exit curve. Multiple cars suffered tire punctures and rim damage during rush hour.",
+        category: "damaged_roads",
+        status: "In Progress",
+        severity: 4,
+        latitude: 37.7849,
+        longitude: -122.4094,
+        address: "450 Market Street, Financial District",
+        landmark: "Near Montgomery Station",
+        in_critical_zone: 1,
+        image_url: "https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80",
+        reporter_name: "Arjun Sharma",
+        assigned_department: "Public Works & Roads",
+        assigned_worker_name: "Marcus Vance",
+        upvotes_count: 28,
+        has_upvoted: true,
+        created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+        comments: [
+          { author: "Arjun Sharma", role: "citizen", text: "Widening after rain! Please dispatch asphalt crew.", time: "2 days ago" },
+          { author: "Marcus Vance", role: "worker", text: "Cold mix truck dispatched. ETA 2 hours.", time: "4 hours ago" }
+        ],
+        history: [
+          { status: "Submitted", by: "Arjun Sharma", text: "Reported via mobile portal" },
+          { status: "In Progress", by: "City Works Dispatch", text: "Road crew unit assigned" }
+        ]
+      },
+      {
+        id: 2,
+        title: "Major Drinking Water Main Rupture Flooding Sidewalk",
+        description: "High-pressure clean water main line burst underneath the sidewalk slab. Gallons of potable drinking water gushing into pedestrian walkways.",
+        category: "water_leakage",
+        status: "Assigned",
+        severity: 5,
+        latitude: 37.7699,
+        longitude: -122.4467,
+        address: "782 Haight Street & Cole St",
+        landmark: "Outside St. Joseph Clinic",
+        in_critical_zone: 1,
+        image_url: "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80",
+        reporter_name: "Dr. Miriam Vance",
+        assigned_department: "Water Supply & Sewerage",
+        assigned_worker_name: "Elena Gomez",
+        upvotes_count: 42,
+        has_upvoted: false,
+        created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
+        comments: [
+          { author: "Sarah Jenkins", role: "official", text: "Escalated under 12h emergency protocol.", time: "6 hours ago" }
+        ],
+        history: [
+          { status: "Submitted", by: "Dr. Miriam Vance", text: "Reported" },
+          { status: "Assigned", by: "Sarah Jenkins", text: "Assigned to Water Supply emergency squad" }
+        ]
+      },
+      {
+        id: 3,
+        title: "Large Fallen Oak Tree Limb Snapped Across Power Lines",
+        description: "Following severe wind gusts, heavy oak branch snapped resting directly on distribution lines, blocking roadway.",
+        category: "fallen_trees",
+        status: "Under Review",
+        severity: 5,
+        latitude: 37.7525,
+        longitude: -122.4180,
+        address: "1120 Valencia Street, Mission District",
+        landmark: "Intersection with 22nd Street",
+        in_critical_zone: 1,
+        image_url: "https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=800&q=80",
+        reporter_name: "Carlos Mendez",
+        assigned_department: "Urban Forestry & Parks",
+        assigned_worker_name: null,
+        upvotes_count: 35,
+        has_upvoted: false,
+        created_at: new Date(Date.now() - 5 * 3600000).toISOString(),
+        comments: [
+          { author: "Carlos Mendez", role: "citizen", text: "Fire crew cordoned area. Need tree removal arborists.", time: "3 hours ago" }
+        ],
+        history: [
+          { status: "Submitted", by: "Carlos Mendez", text: "Reported" },
+          { status: "Under Review", by: "City Triage", text: "Reviewing power safety" }
+        ]
+      },
+      {
+        id: 4,
+        title: "Overflowing Storm Drain Emitting Toxic Sewer Odors",
+        description: "Storm drain completely choked with silt and plastic debris. Wastewater is backing up onto street level near local elementary school.",
+        category: "drainage",
+        status: "Submitted",
+        severity: 4,
+        latitude: 37.7885,
+        longitude: -122.4010,
+        address: "220 Howard Street, SoMa",
+        landmark: "Near Lincoln Elementary Gate",
+        in_critical_zone: 1,
+        image_url: "https://images.unsplash.com/photo-1621451537084-482c73073a0f?auto=format&fit=crop&w=800&q=80",
+        reporter_name: "Jennifer Wu",
+        assigned_department: "Water Supply & Sewerage",
+        assigned_worker_name: null,
+        upvotes_count: 19,
+        has_upvoted: false,
+        created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+        comments: [],
+        history: [{ status: "Submitted", by: "Jennifer Wu", text: "Reported" }]
+      },
+      {
+        id: 5,
+        title: "Consecutive Streetlights Completely Out on Pedestrian Walkway",
+        description: "Six street lighting poles are dark for 300 meters along transit corridor. Dark zone causes severe nighttime safety concern.",
+        category: "broken_streetlights",
+        status: "Assigned",
+        severity: 3,
+        latitude: 37.7634,
+        longitude: -122.4215,
+        address: "3300 16th Street, Mission Dolores",
+        landmark: "Between Dolores Park & Guerrero St",
+        in_critical_zone: 0,
+        image_url: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80",
+        reporter_name: "Liam O'Connor",
+        assigned_department: "Electricity & Public Lighting",
+        assigned_worker_name: "David Kim",
+        upvotes_count: 14,
+        has_upvoted: false,
+        created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
+        comments: [
+          { author: "David Kim", role: "worker", text: "Replacement luminaires ordered for bucket truck install.", time: "1 day ago" }
+        ],
+        history: [{ status: "Assigned", by: "Sarah Jenkins", text: "Assigned to David Kim" }]
+      },
+      {
+        id: 6,
+        title: "Illegal Commercial Trash Dumping in Public Alleyway",
+        description: "Over 20 bags of unsegregated restaurant waste and construction debris dumped beside recycling depot, attracting rodents.",
+        category: "garbage",
+        status: "In Progress",
+        severity: 3,
+        latitude: 37.7950,
+        longitude: -122.4060,
+        address: "640 Commercial St, Chinatown",
+        landmark: "Near Portsmouth Square Plaza",
+        in_critical_zone: 0,
+        image_url: "https://images.unsplash.com/photo-1605600659908-0ef719419d41?auto=format&fit=crop&w=800&q=80",
+        reporter_name: "Kenny Chen",
+        assigned_department: "Sanitation & Waste Management",
+        assigned_worker_name: "Priya Patel",
+        upvotes_count: 11,
+        has_upvoted: false,
+        created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+        comments: [
+          { author: "Priya Patel", role: "worker", text: "Sanitation compactor deployed on scene.", time: "5 hours ago" }
+        ],
+        history: [{ status: "In Progress", by: "Priya Patel", text: "Clean-up initiated" }]
+      },
+      {
+        id: 7,
+        title: "Caved-in Storm Sewer Grate Repaired & Leveled",
+        description: "Sunken metal drain grate was damaging cyclist wheels and vehicular suspension. Fully reconstructed with reinforced frame and smooth asphalt.",
+        category: "damaged_roads",
+        status: "Resolved",
+        severity: 4,
+        latitude: 37.7765,
+        longitude: -122.4242,
+        address: "285 Fell Street & Franklin St",
+        landmark: "Near Symphony Hall",
+        in_critical_zone: 1,
+        image_url: "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80",
+        resolution_image_url: "https://images.unsplash.com/photo-1590402494587-44b71d7772f6?auto=format&fit=crop&w=800&q=80",
+        resolution_remarks: "Completed concrete casing replacement and asphalt leveling. Tested load capacity.",
+        reporter_name: "Rachel Adams",
+        assigned_department: "Public Works & Roads",
+        assigned_worker_name: "Marcus Vance",
+        upvotes_count: 31,
+        has_upvoted: false,
+        created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
+        comments: [
+          { author: "Marcus Vance", role: "worker", text: "Road reopened to traffic.", time: "1 day ago" }
+        ],
+        history: [
+          { status: "Submitted", by: "Rachel Adams", text: "Reported" },
+          { status: "Resolved", by: "Marcus Vance", text: "Completed concrete casing replacement" }
+        ]
+      }
+    ];
+
+    // Priority Engine Algorithm
+    function computePriority(category, severity, upvotes, inCriticalZone) {
+      const hazard = CATEGORIES[category]?.hazard || 50;
+      const sevScore = Math.max(1, Math.min(5, Number(severity))) * 20;
+      const upvoteBonus = Math.min((Number(upvotes) || 0) * 3, 15);
+      const zoneBonus = inCriticalZone ? 5 : 0;
+      const total = (0.35 * hazard) + (0.35 * sevScore) + upvoteBonus + zoneBonus;
+      const score = Math.min(100, Math.max(1, Math.round(total)));
+
+      let tier = "Low", sla = "168h SLA";
+      if (score >= 75) { tier = "Critical"; sla = "12h SLA"; }
+      else if (score >= 58) { tier = "High"; sla = "36h SLA"; }
+      else if (score >= 38) { tier = "Medium"; sla = "72h SLA"; }
+
+      return { score, tier, sla };
+    }
+
+    // State
+    let issues = JSON.parse(localStorage.getItem('civic_issues_v1')) || INITIAL_ISSUES;
+    // Calculate priority scores on load
+    issues = issues.map(i => {
+      const p = computePriority(i.category, i.severity, i.upvotes_count, i.in_critical_zone);
+      return { ...i, priority_score: p.score, priority_tier: p.tier, sla_hours: p.sla };
+    });
+
+    let currentRole = 'citizen';
+    let currentFeedCategory = 'all';
+    let currentFeedStatus = 'all';
+    let mapInstance = null;
+    let markersLayer = null;
+
+    function saveState() {
+      localStorage.setItem('civic_issues_v1', JSON.stringify(issues));
+      document.getElementById('header-total-count').innerText = `${issues.length} Issues Tracked`;
+    }
+
+    // Role Switching
+    function changeRole(role) {
+      currentRole = role;
+      const names = { citizen: 'Arjun Sharma (Citizen)', official: 'Sarah Jenkins (City Official)', worker: 'Marcus Vance (Field Worker)' };
+      document.getElementById('active-user-display').innerText = names[role] || role;
+      renderFeed();
+      renderAuthority();
+    }
+
+    // Tab Switching
+    function switchTab(tabId) {
+      ['feed', 'map', 'authority', 'analytics'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add('hidden');
+        const nav = document.getElementById(`nav-${t}`);
+        if (nav) nav.className = "px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition";
+      });
+      document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+      const activeNav = document.getElementById(`nav-${tabId}`);
+      if (activeNav) activeNav.className = "px-3.5 py-2 rounded-lg text-sm font-bold bg-sky-50 text-sky-700 shadow-sm transition";
+
+      if (tabId === 'map') {
+        if (!mapInstance) initMap();
+        setTimeout(() => mapInstance.invalidateSize(), 150);
+      }
+    }
+
+    // Feed Filters
+    function setFeedStatusFilter(status) {
+      currentFeedStatus = status;
+      ['all', 'active', 'resolved'].forEach(s => {
+        const btn = document.getElementById(`status-filter-${s}`);
+        if (s === status) {
+          btn.className = "px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs transition font-bold";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition font-normal";
+        }
+      });
+      renderFeed();
+    }
+
+    function setFeedCategoryFilter(cat) {
+      currentFeedCategory = cat;
+      document.querySelectorAll('.cat-pill').forEach(btn => {
+        if (btn.getAttribute('data-cat') === cat) {
+          btn.className = "cat-pill px-3 py-1.5 rounded-full font-bold whitespace-nowrap bg-slate-900 text-white";
+        } else {
+          btn.className = "cat-pill px-3 py-1.5 rounded-full font-semibold whitespace-nowrap bg-white border border-slate-200 text-slate-700 hover:bg-slate-100";
+        }
+      });
+      renderFeed();
+    }
+
+    // Render Feed Grid
+    function renderFeed() {
+      const grid = document.getElementById('feed-grid');
+      const search = (document.getElementById('feed-search')?.value || '').toLowerCase();
+      const sort = document.getElementById('feed-sort')?.value || 'priority_desc';
+
+      let list = [...issues].filter(i => {
+        if (currentFeedCategory !== 'all' && i.category !== currentFeedCategory) return false;
+        if (currentFeedStatus === 'active' && ['Resolved', 'Closed'].includes(i.status)) return false;
+        if (currentFeedStatus === 'resolved' && !['Resolved', 'Closed'].includes(i.status)) return false;
+        if (search && !i.title.toLowerCase().includes(search) && !i.address.toLowerCase().includes(search)) return false;
+        return true;
+      });
+
+      if (sort === 'priority_desc') list.sort((a,b) => b.priority_score - a.priority_score);
+      else if (sort === 'upvotes_desc') list.sort((a,b) => (b.upvotes_count || 0) - (a.upvotes_count || 0));
+      else if (sort === 'newest') list.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+      grid.innerHTML = list.map(item => {
+        const catInfo = CATEGORIES[item.category] || { label: item.category };
+        const isCrit = item.priority_tier === 'Critical';
+        const isRes = item.status === 'Resolved';
+
+        return `
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl transition-all duration-200 overflow-hidden flex flex-col justify-between group">
+            <div>
+              <div class="relative h-44 bg-slate-100 overflow-hidden">
+                <img src="${item.image_url}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                
+                <div class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-xs font-bold text-white shadow-sm ${
+                  isRes ? 'bg-emerald-600' : isCrit ? 'bg-rose-600' : item.priority_tier === 'High' ? 'bg-amber-500' : 'bg-sky-500'
+                }">
+                  ${item.priority_tier} (${item.priority_score})
+                </div>
+
+                <div class="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/95 text-slate-800 shadow-sm">
+                  ${item.status}
+                </div>
+
+                <div class="absolute bottom-2.5 left-3 px-2 py-0.5 rounded bg-black/70 backdrop-blur-md text-white text-[11px] font-semibold">
+                  ${catInfo.label}
+                </div>
+
+                ${item.in_critical_zone ? `
+                  <div class="absolute bottom-2.5 right-3 px-2 py-0.5 rounded bg-rose-600 text-white text-[10px] font-bold uppercase tracking-wider">
+                    Critical Zone
+                  </div>
+                ` : ''}
+              </div>
+
+              <div class="p-4 sm:p-5">
+                <h3 onclick="openDetailModal(${item.id})" class="font-bold text-slate-900 text-sm hover:text-sky-600 transition cursor-pointer line-clamp-1">
+                  ${item.title}
+                </h3>
+                <p class="text-slate-600 text-xs mt-1.5 line-clamp-2 leading-relaxed">
+                  ${item.description}
+                </p>
+                <div class="mt-3 pt-2.5 border-t border-slate-100 text-slate-500 text-xs flex items-center justify-between">
+                  <span class="truncate">📍 ${item.address}</span>
+                  <span class="text-indigo-600 font-semibold shrink-0 ml-2">${item.assigned_department ? item.assigned_department.split('&')[0] : 'Assigned'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="px-4 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between text-xs">
+              <button onclick="upvoteIssue(${item.id})" class="px-2.5 py-1.5 rounded-lg border font-bold flex items-center gap-1.5 transition ${
+                item.has_upvoted ? 'bg-sky-600 text-white border-sky-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+              }">
+                <span>👍</span>
+                <span>${item.upvotes_count || 0} Endorsements</span>
+              </button>
+
+              <button onclick="openDetailModal(${item.id})" class="text-sky-600 font-bold hover:text-sky-800">
+                View Details →
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Upvote / Endorse
+    function upvoteIssue(id) {
+      const item = issues.find(i => i.id === id);
+      if (!item) return;
+      item.has_upvoted = !item.has_upvoted;
+      item.upvotes_count = Math.max(0, (item.upvotes_count || 0) + (item.has_upvoted ? 1 : -1));
+
+      // Recalculate priority
+      const p = computePriority(item.category, item.severity, item.upvotes_count, item.in_critical_zone);
+      item.priority_score = p.score;
+      item.priority_tier = p.tier;
+      item.sla_hours = p.sla;
+
+      saveState();
+      renderFeed();
+      renderAuthority();
+      renderAnalytics();
+      updateMapMarkers();
+    }
+
+    // Status Transition
+    function updateStatus(id, newStatus, remarks) {
+      const item = issues.find(i => i.id === id);
+      if (!item) return;
+      item.status = newStatus;
+      if (remarks) item.resolution_remarks = remarks;
+      if (!item.history) item.history = [];
+      item.history.push({
+        status: newStatus,
+        by: currentRole === 'official' ? 'Sarah Jenkins (Official)' : 'Marcus Vance (Field)',
+        text: remarks || `Status changed to ${newStatus}`
+      });
+
+      saveState();
+      renderFeed();
+      renderAuthority();
+      renderAnalytics();
+      updateMapMarkers();
+    }
+
+    // Leaflet OpenStreetMap
+    function initMap() {
+      const el = document.getElementById('leaflet-map');
+      if (!el || mapInstance) return;
+
+      mapInstance = L.map('leaflet-map').setView([37.7749, -122.4194], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(mapInstance);
+
+      markersLayer = L.layerGroup().addTo(mapInstance);
+
+      mapInstance.on('click', (e) => {
+        const { lat, lng } = e.latlng;
+        if (confirm(`Report a civic issue at coordinates: ${lat.toFixed(4)}, ${lng.toFixed(4)}?`)) {
+          openReportModal(lat, lng);
+        }
+      });
+
+      updateMapMarkers();
+    }
+
+    function updateMapMarkers() {
+      if (!markersLayer) return;
+      markersLayer.clearLayers();
+
+      issues.forEach(item => {
+        if (!item.latitude || !item.longitude) return;
+
+        const isCrit = item.priority_tier === 'Critical';
+        const isRes = item.status === 'Resolved';
+        const color = isRes ? '#10b981' : isCrit ? '#e11d48' : item.priority_tier === 'High' ? '#f59e0b' : '#0284c7';
+
+        const pinHtml = `
+          <div style="position:relative; display:flex; align-items:center; justify-content:center; width:32px; height:32px;">
+            ${isCrit && !isRes ? '<div class="pin-pulse" style="position:absolute; width:36px; height:36px; border-radius:9999px; background:rgba(225,29,72,0.4);"></div>' : ''}
+            <div style="width:28px; height:28px; border-radius:9999px; background:${color}; border:3px solid #fff; box-shadow:0 4px 6px rgba(0,0,0,0.25); display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:bold;">
+              ${isRes ? '✓' : item.priority_score}
+            </div>
+          </div>
+        `;
+
+        const icon = L.divIcon({ className: 'custom-pin', html: pinHtml, iconSize: [32, 32], iconAnchor: [16, 16] });
+        const marker = L.marker([item.latitude, item.longitude], { icon });
+
+        marker.bindPopup(`
+          <div style="width:220px; font-family:'Plus Jakarta Sans',sans-serif;">
+            <img src="${item.image_url}" style="width:100%; height:95px; object-fit:cover;" />
+            <div style="padding:10px;">
+              <span style="font-size:10px; font-weight:bold; color:${color}; text-transform:uppercase;">${item.priority_tier} Priority</span>
+              <strong style="font-size:12px; display:block; margin-top:2px; line-height:1.2;">${item.title}</strong>
+              <p style="font-size:11px; color:#64748b; margin:4px 0;">📍 ${item.address}</p>
+              <button onclick="openDetailModal(${item.id})" style="width:100%; margin-top:6px; background:#0284c7; color:#fff; padding:5px; border-radius:6px; font-size:11px; font-weight:bold; border:none; cursor:pointer;">
+                View Ticket Details
+              </button>
+            </div>
+          </div>
+        `);
+        marker.addTo(markersLayer);
+      });
+    }
+
+    function locateUserOnMap() {
+      if (!navigator.geolocation) {
+        alert("Geolocation is not supported by your browser.");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (mapInstance) {
+            mapInstance.flyTo([pos.coords.latitude, pos.coords.longitude], 15);
+            L.circle([pos.coords.latitude, pos.coords.longitude], { radius: 80, color: '#0284c7', fillColor: '#38bdf8', fillOpacity: 0.3 }).addTo(mapInstance).bindPopup("📍 You are here").openPopup();
+          }
+        },
+        () => alert("Unable to retrieve location.")
+      );
+    }
+
+    // Authority Dashboard
+    function renderAuthority() {
+      const tbody = document.getElementById('authority-table-body');
+      if (!tbody) return;
+
+      const sorted = [...issues].sort((a,b) => b.priority_score - a.priority_score);
+      const crit = sorted.filter(i => i.priority_tier === 'Critical' && i.status !== 'Resolved').length;
+      const prog = sorted.filter(i => ['Assigned', 'In Progress'].includes(i.status)).length;
+      const res = sorted.filter(i => ['Resolved', 'Closed'].includes(i.status)).length;
+      const rate = sorted.length > 0 ? Math.round((res / sorted.length) * 100) : 0;
+
+      document.getElementById('stat-total').innerText = sorted.length;
+      document.getElementById('stat-critical').innerText = crit;
+      document.getElementById('stat-progress').innerText = prog;
+      document.getElementById('stat-resolution-rate').innerText = `${rate}%`;
+
+      tbody.innerHTML = sorted.map(item => {
+        const catInfo = CATEGORIES[item.category] || { label: item.category };
+        const isCrit = item.priority_tier === 'Critical';
+
+        return `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="py-3 px-4 whitespace-nowrap">
+              <span class="px-2 py-0.5 rounded text-white font-bold text-xs ${
+                item.status === 'Resolved' ? 'bg-emerald-600' : isCrit ? 'bg-rose-600' : item.priority_tier === 'High' ? 'bg-amber-500' : 'bg-sky-600'
+              }">
+                ${item.priority_tier} (${item.priority_score})
+              </span>
+              <span class="block text-[10px] text-slate-400 mt-0.5">${item.sla_hours}</span>
+            </td>
+            <td class="py-3 px-4">
+              <div onclick="openDetailModal(${item.id})" class="font-bold text-slate-900 hover:text-sky-600 cursor-pointer line-clamp-1">${item.title}</div>
+              <div class="text-[11px] text-slate-400">📍 ${item.address}</div>
+            </td>
+            <td class="py-3 px-4 whitespace-nowrap">
+              <span class="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-semibold">${catInfo.label}</span>
+            </td>
+            <td class="py-3 px-4 whitespace-nowrap">
+              <span class="font-bold text-indigo-700 block">${item.assigned_department || 'Unassigned'}</span>
+              <span class="text-[11px] text-slate-400">${item.assigned_worker_name ? 'Staff: ' + item.assigned_worker_name : 'Pending Dispatch'}</span>
+            </td>
+            <td class="py-3 px-4 whitespace-nowrap">
+              <select onchange="updateStatus(${item.id}, this.value)" class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-semibold text-xs text-slate-700">
+                ${['Submitted', 'Under Review', 'Assigned', 'In Progress', 'Resolved', 'Closed'].map(s => `
+                  <option value="${s}" ${item.status === s ? 'selected' : ''}>${s}</option>
+                `).join('')}
+              </select>
+            </td>
+            <td class="py-3 px-4 text-right whitespace-nowrap">
+              <button onclick="openDetailModal(${item.id})" class="px-3 py-1 bg-sky-50 text-sky-700 rounded-lg font-bold hover:bg-sky-100 transition">
+                Manage
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Analytics
+    function renderAnalytics() {
+      const catBars = document.getElementById('analytics-category-bars');
+      const deptBars = document.getElementById('analytics-dept-bars');
+      if (!catBars || !deptBars) return;
+
+      const catCounts = {};
+      issues.forEach(i => catCounts[i.category] = (catCounts[i.category] || 0) + 1);
+
+      catBars.innerHTML = Object.entries(catCounts).map(([cat, count]) => {
+        const info = CATEGORIES[cat] || { label: cat };
+        const pct = Math.round((count / issues.length) * 100);
+        return `
+          <div class="space-y-1 text-xs">
+            <div class="flex justify-between font-bold">
+              <span class="text-slate-800">${info.label}</span>
+              <span class="text-slate-900">${count} issues (${pct}%)</span>
+            </div>
+            <div class="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+              <div class="h-full bg-sky-600 rounded-full" style="width:${Math.max(8, pct)}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const deptCounts = {};
+      issues.forEach(i => {
+        const d = i.assigned_department || 'Unassigned';
+        deptCounts[d] = (deptCounts[d] || 0) + 1;
+      });
+
+      deptBars.innerHTML = Object.entries(deptCounts).map(([dept, count]) => `
+        <div class="p-3 bg-slate-50 border border-slate-100 rounded-xl flex justify-between items-center text-xs">
+          <span class="font-bold text-slate-800">${dept}</span>
+          <span class="font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-lg">${count} active tasks</span>
+        </div>
+      `).join('');
+    }
+
+    // Report Issue Modal
+    function openReportModal(lat, lng) {
+      document.getElementById('report-modal').classList.remove('hidden');
+      document.getElementById('report-modal').classList.add('flex');
+      if (lat && lng) {
+        document.getElementById('modal-lat').value = lat.toFixed(4);
+        document.getElementById('modal-lng').value = lng.toFixed(4);
+        document.getElementById('modal-address').value = `Pinned Coordinates (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+      }
+      updateUrgencyPreview();
+    }
+
+    function closeReportModal() {
+      document.getElementById('report-modal').classList.add('hidden');
+      document.getElementById('report-modal').classList.remove('flex');
+    }
+
+    function handleSeveritySlide(val) {
+      document.getElementById('severity-num').innerText = val;
+      const labels = {
+        1: '1 - Minor Inconvenience',
+        2: '2 - Noticeable Disruption',
+        3: '3 - Substantial Hazard',
+        4: '4 - Severe Road/Traffic Risk',
+        5: '5 - Life Safety Emergency'
+      };
+      document.getElementById('severity-label').innerText = labels[val];
+      updateUrgencyPreview();
+    }
+
+    function updateUrgencyPreview() {
+      const cat = document.getElementById('modal-category')?.value || 'damaged_roads';
+      const sev = Number(document.getElementById('modal-severity')?.value || 3);
+      const isCrit = document.getElementById('modal-critical-zone')?.checked || false;
+
+      const p = computePriority(cat, sev, 0, isCrit);
+      document.getElementById('preview-score-badge').innerText = `${p.tier} (${p.score}/100)`;
+      document.getElementById('preview-sla').innerText = p.sla;
+    }
+
+    function useBrowserLocation() {
+      if (!navigator.geolocation) {
+        alert("Geolocation is not supported by your browser.");
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude.toFixed(4);
+          const lng = pos.coords.longitude.toFixed(4);
+          document.getElementById('modal-lat').value = lat;
+          document.getElementById('modal-lng').value = lng;
+          document.getElementById('modal-address').value = `GPS Pinned Location (${lat}, ${lng})`;
+        },
+        () => alert("Unable to retrieve location.")
+      );
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const cat = document.getElementById('modal-category').value;
+      const sev = Number(document.getElementById('modal-severity').value);
+      const isCrit = document.getElementById('modal-critical-zone').checked ? 1 : 0;
+      const p = computePriority(cat, sev, 0, Boolean(isCrit));
+
+      const newIssue = {
+        id: Date.now(),
+        title: document.getElementById('modal-title').value,
+        description: document.getElementById('modal-desc').value,
+        category: cat,
+        status: "Submitted",
+        severity: sev,
+        priority_score: p.score,
+        priority_tier: p.tier,
+        sla_hours: p.sla,
+        latitude: parseFloat(document.getElementById('modal-lat').value),
+        longitude: parseFloat(document.getElementById('modal-lng').value),
+        address: document.getElementById('modal-address').value,
+        in_critical_zone: isCrit,
+        image_url: document.getElementById('modal-image').value,
+        reporter_name: currentRole === 'citizen' ? 'Arjun Sharma' : 'Staff Reporter',
+        assigned_department: CATEGORIES[cat]?.dept || 'Public Works & Roads',
+        upvotes_count: 0,
+        has_upvoted: false,
+        created_at: new Date().toISOString(),
+        comments: [],
+        history: [{ status: "Submitted", by: "Citizen", text: "Logged via CivicConnect Portal" }]
+      };
+
+      issues.unshift(newIssue);
+      saveState();
+      closeReportModal();
+      renderFeed();
+      renderAuthority();
+      renderAnalytics();
+      updateMapMarkers();
+      alert(`Civic issue successfully submitted! Assigned Priority: ${p.tier} (${p.score}/100)`);
+    }
+
+    // Detail Modal
+    function openDetailModal(id) {
+      const item = issues.find(i => i.id === id);
+      if (!item) return;
+
+      const isCrit = item.priority_tier === 'Critical';
+      const isRes = item.status === 'Resolved';
+
+      document.getElementById('detail-modal-badges').innerHTML = `
+        <span class="px-2.5 py-1 rounded-full text-xs font-bold text-white ${isRes ? 'bg-emerald-600' : isCrit ? 'bg-rose-600' : 'bg-sky-600'}">
+          ${item.priority_tier} (${item.priority_score})
+        </span>
+        <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-white text-slate-800">
+          ${item.status}
+        </span>
+      `;
+
+      document.getElementById('detail-modal-body').innerHTML = `
+        <h2 class="text-xl font-extrabold text-slate-900">${item.title}</h2>
+        <p class="text-slate-700 leading-relaxed text-sm whitespace-pre-line">${item.description}</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <div class="rounded-xl overflow-hidden border border-slate-200 bg-slate-100 h-48">
+            <img src="${item.image_url}" class="w-full h-full object-cover" />
+          </div>
+          ${item.resolution_image_url ? `
+            <div class="rounded-xl overflow-hidden border border-emerald-200 bg-emerald-50 h-48">
+              <img src="${item.resolution_image_url}" class="w-full h-full object-cover" />
+            </div>
+          ` : `
+            <div class="rounded-xl border border-dashed border-slate-200 p-4 flex flex-col items-center justify-center text-center text-slate-400 h-48">
+              <span class="text-2xl">⏳</span>
+              <p class="text-xs font-semibold mt-2">Work order active</p>
+              <p class="text-[11px] text-slate-400">Resolution photo appears once fixed</p>
+            </div>
+          `}
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+          <div><strong>📍 Address:</strong> ${item.address}</div>
+          <div><strong>🏛️ Department:</strong> ${item.assigned_department || 'Unassigned'}</div>
+        </div>
+
+        ${item.resolution_remarks ? `
+          <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900">
+            <strong>✓ Official Resolution Remarks:</strong> ${item.resolution_remarks}
+          </div>
+        ` : ''}
+
+        ${currentRole !== 'citizen' ? `
+          <div class="p-4 bg-slate-900 text-white rounded-2xl space-y-3">
+            <span class="font-bold text-amber-400 block uppercase tracking-wider text-[11px]">Authority Action Console</span>
+            <div class="flex items-center gap-2">
+              <button onclick="updateStatus(${item.id}, 'Resolved', 'Field repair completed and verified.'); closeDetailModal();" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl font-bold transition">
+                ✓ Mark Resolved
+              </button>
+              <button onclick="updateStatus(${item.id}, 'In Progress', 'Crew dispatched to site.'); closeDetailModal();" class="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 rounded-xl font-bold transition">
+                ⚡ Dispatch Crew
+              </button>
+            </div>
+          </div>
+        ` : ''}
+      `;
+
+      document.getElementById('detail-modal').classList.remove('hidden');
+      document.getElementById('detail-modal').classList.add('flex');
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detail-modal').classList.add('hidden');
+      document.getElementById('detail-modal').classList.remove('flex');
+    }
+
+    // Export CSV
+    function exportCSV() {
+      const rows = [["ID", "Title", "Category", "Status", "Priority Score", "Address", "Upvotes", "Department"]];
+      issues.forEach(i => rows.push([i.id, `"${i.title.replace(/"/g, '""')}"`, i.category, i.status, i.priority_score, `"${i.address.replace(/"/g, '""')}"`, i.upvotes_count || 0, `"${i.assigned_department || ''}"`]));
+      const csv = "data:text/csv;charset=utf-8," + rows.map(r => r.join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = encodeURI(csv);
+      a.download = `CivicConnect_Export_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+    }
+
+    // Startup
+    window.onload = () => {
+      saveState();
+      renderFeed();
+      renderAuthority();
+      renderAnalytics();
+    };
+  </script>
+</body>
+</html>
